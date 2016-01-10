@@ -55,15 +55,28 @@ void capture_video (int dev, char *filename, bool test) {
   delete cap;
 }
 
+void print_doc() {
+  printf("Skywalker - Computer vision based telescope auto-guiding system\n");
+  printf("\n");
+  printf("Usage:\n");
+  printf("\t-d <device nr> : uses live feed from a v4l device /dev/videoX\n");
+  printf("\t-f <video file> : test mode using a local video file\n");
+  printf("\t-h : prints this help\n");
+  printf("\n");
+  printf("If no argument are provided it starts acquiring live feed from /dev/video0\n");
+  printf("\n");
+  printf("May the force be with you\n");
+  printf("\n");
+}
 
 
 int main(int argc, char **argv) {
-  bool test = false;
+  bool test = false, exit = false;
   int dev = 0;
   char *filename;
   int c;
   
-  while ((c = getopt(argc, argv, "d:f:")) != -1) {
+  while ((c = getopt(argc, argv, "d:f:h")) != -1) {
     switch (c) {
     case 'd':
       test = false;
@@ -73,10 +86,15 @@ int main(int argc, char **argv) {
       test = true;
       filename = optarg;
       break;
-    }
+    case 'h':
+      print_doc();
+      exit = true;
+      break;
+    }    
   }
 
-  capture_video (dev, filename, test);
+  if(!exit)
+    capture_video (dev, filename, test);
   
   return 0;
 }
