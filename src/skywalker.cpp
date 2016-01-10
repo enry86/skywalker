@@ -1,5 +1,8 @@
 #include <stdio.h>
 #include <unistd.h>
+#include <chrono>
+#include <ctime>
+#include <iostream>
 #include <opencv2/opencv.hpp>
 
 #include "skywalker/image_shift.hpp"
@@ -7,6 +10,7 @@
 using namespace cv;
 
 void capture_video (int dev, char *filename, bool test) {
+  std::chrono::time_point<std::chrono::system_clock> start, end;
   VideoCapture *cap;  
   Mat frame, prev_frame;
   int key = 0;
@@ -26,28 +30,37 @@ void capture_video (int dev, char *filename, bool test) {
     throw "Empty stream";
 
   while (key != 27 && !stream_end) {
+    start = std::chrono::system_clock::now();
     *cap >> frame;
     if (!shift_total_init) {
       shift_total.set_previous_frame(frame);
       shift_total_init = true;
     }
-    else
-      shift_total.set_current_frame(frame);
+    shift_total.set_current_frame(frame);
     
     if (frame.empty()) 
       stream_end = true;
     else {
       imshow("Frame", frame);
+      if (prev_frame.empty())
+	frame.copyTo(prev_frame);
+      
+      shift.set_previous_frame(prev_frame);    
+      shift.set_current_frame(frame);
+
       frame.copyTo(prev_frame);
 
-      shift.set_current_frame(frame);
+      end = std::chrono::system_clock::now();
       
       printf("Amount of shift between consecutive frames: %f\n",
 	     shift.get_shift());
       printf("Amount of shift between first and last frames: %f\n",
 	     shift_total.get_shift());
+      std::chrono::duration<double> elapsed_seconds = end-start;
+      std::time_t end_time = std::chrono::system_clock::to_time_t(end);
       
-      shift.set_previous_frame(prev_frame);    
+      std::cout << "elapsed time: " << elapsed_seconds.count() << "s\n";
+      
     }
     key = waitKey() & 0xff;
   }
