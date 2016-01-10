@@ -1,0 +1,8 @@
+cmake_minimum_required(VERSION 2.8)
+project( Skywalker )
+find_package( OpenCV REQUIRED )
+include_directories ( include )
+add_library ( image_shift src/lib/image_shift.cpp )
+add_executable( skywalker src/skywalker.cpp )
+target_link_libraries( skywalker ${OpenCV_LIBS} )
+target_link_libraries( skywalker image_shift )
