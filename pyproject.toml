@@ -6,6 +6,7 @@ build-backend = "hatchling.build"
 name = "starwalker"
 version = "0.1.0"
 description = "StarWalker"
+readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "MIT" }
 authors = [{ name = "Enrico" }]
@@ -36,7 +37,7 @@ dev = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/example/starwalker"
+Homepage = "https://github.com/enry86/skywalker"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/starwalker"]
