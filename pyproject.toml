@@ -3,9 +3,9 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "starwalker"
+name = "skywalker"
 version = "0.1.0"
-description = "StarWalker"
+description = "SkyWalker"
 readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "MIT" }
@@ -28,7 +28,7 @@ dependencies = [
 ]
 
 [project.scripts]
-starwalker = "starwalker.__main__:main"
+skywalker = "skywalker.__main__:main"
 
 [project.optional-dependencies]
 dev = [
@@ -40,7 +40,7 @@ dev = [
 Homepage = "https://github.com/enry86/skywalker"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/starwalker"]
+packages = ["src/skywalker"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

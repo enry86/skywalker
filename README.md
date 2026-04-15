@@ -1,6 +1,6 @@
-# StarWalker
+# SkyWalker
 
-StarWalker is a small **autoguide prototype** for telescope setups: it captures video from a guide camera, detects a bright star (blob detection with a contour fallback), lets you **lock** a reference position with the mouse, and shows **pixel error** between the locked point and the tracked star. It uses **OpenCV** and is meant for experimentation until hardware drivers and guiding software are fully wired up.
+SkyWalker is a small **autoguide prototype** for telescope setups: it captures video from a guide camera, detects a bright star (blob detection with a contour fallback), lets you **lock** a reference position with the mouse, and shows **pixel error** between the locked point and the tracked star. It uses **OpenCV** and is meant for experimentation until hardware drivers and guiding software are fully wired up.
 
 **Requirements:** Python 3.11+, [OpenCV](https://opencv.org/) and NumPy (see `pyproject.toml`).
 
@@ -21,13 +21,13 @@ pip install -e ".[dev]"
 ## Run
 
 ```bash
-python -m starwalker
+python -m skywalker
 ```
 
-If the `starwalker` console script is on your `PATH` (after install):
+If the `skywalker` console script is on your `PATH` (after install):
 
 ```bash
-starwalker
+skywalker
 ```
 
 ### Interactive window
@@ -40,7 +40,7 @@ starwalker
 
 ## CLI reference
 
-Global options (defaults match `GuideConfig` in `src/starwalker/config.py`):
+Global options (defaults match `GuideConfig` in `src/skywalker/config.py`):
 
 | Option | Description |
 |--------|-------------|
@@ -73,8 +73,8 @@ Global options (defaults match `GuideConfig` in `src/starwalker/config.py`):
 Omitted flags keep the defaults above. You can combine flags, for example:
 
 ```bash
-python -m starwalker -c 0 --exposure -10 --gain 80 --frame-width 800 --frame-height 600
-python -m starwalker --list-cameras
+python -m skywalker -c 0 --exposure -10 --gain 80 --frame-width 800 --frame-height 600
+python -m skywalker --list-cameras
 ```
 
 ## License

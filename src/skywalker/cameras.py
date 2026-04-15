@@ -38,7 +38,7 @@ def open_capture(
         "  • Device Manager: camera present without errors; install vendor drivers if needed.\n"
         "  • Windows: Settings → Privacy → Camera → allow desktop apps.\n"
         "  • Close other apps using the camera (Teams, browser, vendor software).\n"
-        "  • Run: python -m starwalker --list-cameras"
+        "  • Run: python -m skywalker --list-cameras"
     )
 
 
@@ -67,4 +67,4 @@ def probe_cameras(max_index: int = 10) -> None:
     if not any_found:
         print("  No cameras responded. If the device is plugged in, check drivers and privacy.")
     else:
-        print("\nUse: python -m starwalker -c <index>")
+        print("\nUse: python -m skywalker -c <index>")

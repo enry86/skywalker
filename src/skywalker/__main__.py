@@ -1,4 +1,4 @@
-"""`python -m starwalker` entry point."""
+"""`python -m skywalker` entry point."""
 
 from __future__ import annotations
 
@@ -10,7 +10,7 @@ from dataclasses import replace
 def _build_parser(default) -> argparse.ArgumentParser:
     d = default
     p = argparse.ArgumentParser(
-        prog="starwalker",
+        prog="skywalker",
         description="Autoguide camera: lock a star and read pixel error.",
     )
     p.add_argument(
@@ -152,19 +152,19 @@ def _config_from_args(args: argparse.Namespace, base):
 
 
 def main() -> int:
-    from starwalker.config import GuideConfig
+    from skywalker.config import GuideConfig
 
     base = GuideConfig()
     parser = _build_parser(base)
     args = parser.parse_args()
 
     if args.list_cameras:
-        from starwalker.cameras import probe_cameras
+        from skywalker.cameras import probe_cameras
 
         probe_cameras()
         return 0
 
-    from starwalker.guide import run_guide
+    from skywalker.guide import run_guide
 
     try:
         run_guide(_config_from_args(args, base))

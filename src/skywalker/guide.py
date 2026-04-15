@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import cv2
 
-from starwalker.cameras import open_capture
-from starwalker.config import GuideConfig
+from skywalker.cameras import open_capture
+from skywalker.config import GuideConfig
 
 WINDOW_NAME = "Guide Camera - Star Tracker"
 
