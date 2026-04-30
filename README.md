@@ -114,6 +114,35 @@ python -m skywalker --serial-port COM5 --baud-rate 115200 --sidereal-speed 1.234
 - Update pin constants (`DIR_PIN`, `PWM_PIN`, `ENABLE_PIN`) and scaling (`SPEED_TO_PWM`) for your hardware.
 - Start with low values for `sidereal_speed`, `kp`, and `max_correction` while tuning.
 
+### Isolated motor step test (no camera)
+
+Use the helper script to send timed speed levels directly to Arduino:
+
+```bash
+python scripts/motor_step_test.py --port COM5 --baud 115200 --levels 0.2,0.5,1.0 --hold 2
+```
+
+Ramp test mode example:
+
+```bash
+python scripts/motor_step_test.py --port COM5 --mode ramp --ramp-min 0.1 --ramp-max 1.0 --ramp-step 0.05 --ramp-dt 0.2
+```
+
+Useful options:
+
+- `--pause 0.5` pause at zero between levels
+- `--bidirectional` also test negative levels (reverse direction)
+- `--settle 2.0` wait after opening serial (Arduino auto-reset window)
+- `--mode ramp` continuous up/down sweep instead of discrete steps
+- `--ramp-min`, `--ramp-max`, `--ramp-step`, `--ramp-dt` ramp profile tuning
+
+This script always sends `STOP` at start and end as a safety guard.
+
+Windows launcher shortcuts (use project `venv` automatically):
+
+- Step mode: `scripts\\run_motor_step.bat --port COM5 --levels 0.2,0.5,1.0 --hold 2`
+- Ramp mode: `scripts\\run_motor_ramp.bat --port COM5 --ramp-min 0.1 --ramp-max 1.0 --ramp-step 0.05 --ramp-dt 0.2`
+
 ## License
 
 MIT (see `pyproject.toml`).
