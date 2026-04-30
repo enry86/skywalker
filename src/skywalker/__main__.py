@@ -113,6 +113,85 @@ def _build_parser(default) -> argparse.ArgumentParser:
         help=f"Use CLAHE before detection (default: {d.use_clahe})",
     )
     p.add_argument(
+        "--serial-port",
+        type=str,
+        default=None,
+        dest="serial_port",
+        metavar="PORT",
+        help="Arduino serial port (for example COM5).",
+    )
+    p.add_argument(
+        "--baud-rate",
+        type=int,
+        default=None,
+        dest="baud_rate",
+        metavar="N",
+        help=f"Serial baud rate (default: {d.baud_rate})",
+    )
+    p.add_argument(
+        "--serial-dry-run",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        dest="serial_dry_run",
+        help=f"Do not open serial, emulate transport (default: {d.serial_dry_run})",
+    )
+    p.add_argument(
+        "--sidereal-speed",
+        type=float,
+        default=None,
+        dest="sidereal_speed",
+        metavar="VAL",
+        help=f"Base RA speed setpoint (default: {d.sidereal_speed})",
+    )
+    p.add_argument(
+        "--kp",
+        type=float,
+        default=None,
+        dest="kp",
+        metavar="VAL",
+        help=f"Proportional gain from X drift to speed correction (default: {d.kp})",
+    )
+    p.add_argument(
+        "--deadband-px",
+        type=float,
+        default=None,
+        dest="deadband_px",
+        metavar="PX",
+        help=f"Ignore |error_x| below this threshold (default: {d.deadband_px})",
+    )
+    p.add_argument(
+        "--max-correction",
+        type=float,
+        default=None,
+        dest="max_correction",
+        metavar="VAL",
+        help=f"Maximum |correction| added to sidereal speed (default: {d.max_correction})",
+    )
+    p.add_argument(
+        "--command-hz",
+        type=float,
+        default=None,
+        dest="command_hz",
+        metavar="HZ",
+        help=f"Serial command update rate (default: {d.command_hz})",
+    )
+    p.add_argument(
+        "--min-command-delta",
+        type=float,
+        default=None,
+        dest="min_command_delta",
+        metavar="VAL",
+        help=f"Minimum setpoint change before sending (default: {d.min_command_delta})",
+    )
+    p.add_argument(
+        "--lock-loss-timeout",
+        type=float,
+        default=None,
+        dest="lock_loss_timeout_s",
+        metavar="SEC",
+        help=f"Time without valid lock before forcing stop (default: {d.lock_loss_timeout_s})",
+    )
+    p.add_argument(
         "--list-cameras",
         action="store_true",
         help="Probe indices and exit (which devices OpenCV can open).",
@@ -148,6 +227,26 @@ def _config_from_args(args: argparse.Namespace, base):
         kw["min_inertia"] = args.min_inertia
     if args.use_clahe is not None:
         kw["use_clahe"] = args.use_clahe
+    if args.serial_port is not None:
+        kw["serial_port"] = args.serial_port
+    if args.baud_rate is not None:
+        kw["baud_rate"] = args.baud_rate
+    if args.serial_dry_run is not None:
+        kw["serial_dry_run"] = args.serial_dry_run
+    if args.sidereal_speed is not None:
+        kw["sidereal_speed"] = args.sidereal_speed
+    if args.kp is not None:
+        kw["kp"] = args.kp
+    if args.deadband_px is not None:
+        kw["deadband_px"] = args.deadband_px
+    if args.max_correction is not None:
+        kw["max_correction"] = args.max_correction
+    if args.command_hz is not None:
+        kw["command_hz"] = args.command_hz
+    if args.min_command_delta is not None:
+        kw["min_command_delta"] = args.min_command_delta
+    if args.lock_loss_timeout_s is not None:
+        kw["lock_loss_timeout_s"] = args.lock_loss_timeout_s
     return replace(base, **kw) if kw else base
 
 

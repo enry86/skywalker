@@ -21,3 +21,14 @@ class GuideConfig:
     min_inertia: float = 0.5
 
     use_clahe: bool = True
+
+    serial_port: str = ""
+    baud_rate: int = 115200
+    sidereal_speed: float = 0.0
+    kp: float = 0.02
+    deadband_px: float = 0.8
+    max_correction: float = 0.5
+    command_hz: float = 8.0
+    min_command_delta: float = 0.002
+    lock_loss_timeout_s: float = 1.0
+    serial_dry_run: bool = False

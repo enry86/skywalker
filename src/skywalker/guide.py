@@ -2,10 +2,14 @@
 
 from __future__ import annotations
 
+import time
+
 import cv2
 
 from skywalker.cameras import open_capture
 from skywalker.config import GuideConfig
+from skywalker.control import GuidingSample, RAController, RAControllerConfig
+from skywalker.serial_link import SerialConfig, SerialSetpointLink
 
 WINDOW_NAME = "Guide Camera - Star Tracker"
 
@@ -19,6 +23,8 @@ class GuideApp:
         self.guide_star_pos: tuple[float, float] | None = None
         self.error_x: float = 0.0
         self.error_y: float = 0.0
+        self.last_sample: GuidingSample | None = None
+        self.current_speed_cmd: float = self.config.sidereal_speed
 
         self._cap = open_capture(
             self.config.cam_index,
@@ -44,6 +50,23 @@ class GuideApp:
         cv2.namedWindow(WINDOW_NAME)
         cv2.setMouseCallback(WINDOW_NAME, self._on_mouse)
 
+    def _build_guiding_sample(
+        self,
+        current_pos: tuple[float, float] | None,
+        now: float,
+        dt_s: float,
+    ) -> GuidingSample:
+        locked = self.reference_pos is not None
+        star_found = current_pos is not None
+        return GuidingSample(
+            timestamp_s=now,
+            locked=locked,
+            star_found=star_found,
+            error_x=self.error_x,
+            error_y=self.error_y,
+            dt_s=dt_s,
+        )
+
     def _on_mouse(self, event: int, x: int, y: int, _flags: int, _param: object) -> None:
         if event == cv2.EVENT_LBUTTONDOWN:
             self.reference_pos = (float(x), float(y))
@@ -57,8 +80,32 @@ class GuideApp:
         print(" - Press 'r' to reset lock")
         print(" - Press 'q' to quit")
 
+        controller = RAController(
+            RAControllerConfig(
+                sidereal_speed=cfg.sidereal_speed,
+                kp=cfg.kp,
+                deadband_px=cfg.deadband_px,
+                max_correction=cfg.max_correction,
+                min_command_delta=cfg.min_command_delta,
+                lock_loss_timeout_s=cfg.lock_loss_timeout_s,
+            )
+        )
+        serial_link = SerialSetpointLink(
+            SerialConfig(
+                port=cfg.serial_port,
+                baud_rate=cfg.baud_rate,
+                dry_run=cfg.serial_dry_run,
+            )
+        )
+        command_period_s = 1.0 / max(cfg.command_hz, 0.1)
+        next_command_ts = time.monotonic()
+        prev_frame_ts = next_command_ts
+
         try:
             while True:
+                now = time.monotonic()
+                dt_s = max(now - prev_frame_ts, 1e-6)
+                prev_frame_ts = now
                 ret, frame = self._cap.read()
                 if not ret:
                     print("Failed to grab frame")
@@ -101,7 +148,19 @@ class GuideApp:
                     self.error_y = current_pos[1] - self.reference_pos[1]
                     self.guide_star_pos = current_pos
                 else:
+                    self.error_x = 0.0
+                    self.error_y = 0.0
                     self.guide_star_pos = current_pos
+
+                sample = self._build_guiding_sample(current_pos=current_pos, now=now, dt_s=dt_s)
+                self.last_sample = sample
+
+                if now >= next_command_ts:
+                    next_command_ts = now + command_period_s
+                    candidate = controller.compute(sample)
+                    if controller.should_emit(candidate, serial_link.last_sent):
+                        serial_link.send_setpoint(candidate)
+                    self.current_speed_cmd = candidate
 
                 display = frame.copy()
 
@@ -145,6 +204,20 @@ class GuideApp:
                         2,
                     )
 
+                control_text = (
+                    f"RA cmd: {self.current_speed_cmd:+.4f} stp/s   "
+                    f"port: {'DRY-RUN' if cfg.serial_dry_run else cfg.serial_port or 'N/A'}"
+                )
+                cv2.putText(
+                    display,
+                    control_text,
+                    (10, 90),
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    0.55,
+                    (255, 200, 0),
+                    2,
+                )
+
                 cv2.imshow(WINDOW_NAME, display)
 
                 key = cv2.waitKey(1) & 0xFF
@@ -152,8 +225,14 @@ class GuideApp:
                     break
                 if key == ord("r"):
                     self.reference_pos = None
+                    self.error_x = 0.0
+                    self.error_y = 0.0
                     print("Lock reset")
         finally:
+            try:
+                serial_link.send_stop()
+            finally:
+                serial_link.close()
             self._cap.release()
             cv2.destroyAllWindows()
 

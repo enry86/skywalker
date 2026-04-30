@@ -25,6 +25,7 @@ classifiers = [
 dependencies = [
   "numpy>=1.26",
   "opencv-python>=4.8",
+  "pyserial>=3.5",
 ]
 
 [project.scripts]
