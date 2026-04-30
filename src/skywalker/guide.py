@@ -25,6 +25,9 @@ class GuideApp:
         self.error_y: float = 0.0
         self.last_sample: GuidingSample | None = None
         self.current_speed_cmd: float = self.config.sidereal_speed
+        self.current_correction: float = 0.0
+        self.filtered_error_x: float = 0.0
+        self.tracking_status: str = "INIT"
 
         self._cap = open_capture(
             self.config.cam_index,
@@ -161,6 +164,9 @@ class GuideApp:
                     if controller.should_emit(candidate, serial_link.last_sent):
                         serial_link.send_setpoint(candidate)
                     self.current_speed_cmd = candidate
+                    self.current_correction = controller.last_correction
+                    self.filtered_error_x = controller.filtered_error_x
+                    self.tracking_status = controller.last_status
 
                 display = frame.copy()
 
@@ -204,14 +210,42 @@ class GuideApp:
                         2,
                     )
 
+                port_text = "DRY-RUN" if cfg.serial_dry_run else cfg.serial_port or "N/A"
                 control_text = (
-                    f"RA cmd: {self.current_speed_cmd:+.4f} stp/s   "
-                    f"port: {'DRY-RUN' if cfg.serial_dry_run else cfg.serial_port or 'N/A'}"
+                    f"Tracking: {self.tracking_status}   "
+                    f"Port: {port_text}   CmdHz: {cfg.command_hz:.1f}"
                 )
                 cv2.putText(
                     display,
                     control_text,
                     (10, 90),
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    0.55,
+                    (255, 200, 0),
+                    2,
+                )
+                speed_text = (
+                    f"Motor cmd: {self.current_speed_cmd:+.4f} stp/s   "
+                    f"Base: {cfg.sidereal_speed:+.4f}   "
+                    f"Corr: {self.current_correction:+.4f}"
+                )
+                cv2.putText(
+                    display,
+                    speed_text,
+                    (10, 115),
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    0.55,
+                    (255, 200, 0),
+                    2,
+                )
+                corr_text = (
+                    f"Filt X: {self.filtered_error_x:+.2f} px   "
+                    f"Kp: {cfg.kp:.4f}   Deadband: {cfg.deadband_px:.2f}px"
+                )
+                cv2.putText(
+                    display,
+                    corr_text,
+                    (10, 140),
                     cv2.FONT_HERSHEY_SIMPLEX,
                     0.55,
                     (255, 200, 0),
