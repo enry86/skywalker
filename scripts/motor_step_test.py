@@ -40,7 +40,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--levels",
         type=parse_levels,
-        default=[0.2, 0.5, 1.0],
+        default=[0.2, 0.5, 1.0, 1.5, 2.0],
         help="Comma-separated speed levels for step mode, e.g. 0.2,0.5,1.0",
     )
     parser.add_argument("--hold", type=float, default=2.0, help="Seconds to hold each level")

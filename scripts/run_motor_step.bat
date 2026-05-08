@@ -15,7 +15,7 @@ if "%~1"=="" (
   echo Usage:
   echo   scripts\run_motor_step.bat --port COM5 [extra options]
   echo Example:
-  echo   scripts\run_motor_step.bat --port COM5 --levels 0.2,0.5,1.0 --hold 2
+  echo   scripts\run_motor_step.bat --port COM5 --levels 0.2,0.5,1.0,1.5,2.0 --hold 2
   exit /b 1
 )
 

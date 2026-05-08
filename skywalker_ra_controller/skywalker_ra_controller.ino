@@ -7,21 +7,23 @@
     - PING\n          : replies PONG
     - STATUS\n        : prints current state
 
-  This sketch maps signed speed commands to DIR + PWM outputs for a
-  motor driver shield/H-bridge. Adapt pin numbers and polarity below.
+  This sketch maps signed speed commands to Adafruit Motor Shield v1
+  commands through AFMotor.h (DC motor channel M1..M4).
 */
 
+#include <AFMotor.h>
+
 // -------------------- User-tunable hardware config --------------------
-static const int DIR_PIN = 7;
-static const int PWM_PIN = 9;
-static const int ENABLE_PIN = 8;  // Set to -1 if your driver has no enable pin
+// Choose motor channel and PWM frequency for your wiring.
+// Channel: 1..4 maps to M1..M4 outputs on the shield.
+static const uint8_t MOTOR_CHANNEL = 4;
+static const uint8_t MOTOR_FREQUENCY = MOTOR12_1KHZ;
 
 static const bool DIR_INVERTED = false;
-static const bool ENABLE_ACTIVE_HIGH = true;
 
 // ---------------------- Control and safety config ----------------------
 static const long SERIAL_BAUD = 115200;
-static const unsigned long WATCHDOG_TIMEOUT_MS = 1200;
+static const unsigned long WATCHDOG_TIMEOUT_MS = 12000;
 
 // Input speed (from Python SET command) is mapped to PWM via SPEED_TO_PWM.
 // Example: speed=1.2 and SPEED_TO_PWM=120 => pwm=144.
@@ -33,16 +35,10 @@ static const int PWM_MIN_EFFECTIVE = 0;
 
 float targetSpeed = 0.0f;
 unsigned long lastCommandMs = 0;
+AF_DCMotor motor(MOTOR_CHANNEL, MOTOR_FREQUENCY);
 
 void setup() {
   Serial.begin(SERIAL_BAUD);
-
-  pinMode(DIR_PIN, OUTPUT);
-  pinMode(PWM_PIN, OUTPUT);
-  if (ENABLE_PIN >= 0) {
-    pinMode(ENABLE_PIN, OUTPUT);
-    setDriverEnabled(true);
-  }
 
   applyMotorCommand(0.0f);
   lastCommandMs = millis();
@@ -95,7 +91,9 @@ void processCommand(const String &line) {
     Serial.print("STATUS speed=");
     Serial.print(targetSpeed, 6);
     Serial.print(" pwm=");
-    Serial.println(speedToPwm(targetSpeed));
+    Serial.print(speedToPwm(targetSpeed));
+    Serial.print(" channel=M");
+    Serial.println(MOTOR_CHANNEL);
     return;
   }
 
@@ -116,13 +114,18 @@ void watchdogCheck() {
 
 void applyMotorCommand(float speed) {
   int pwm = speedToPwm(speed);
+  motor.setSpeed((uint8_t)pwm);
+
+  if (pwm == 0) {
+    motor.run(RELEASE);
+    return;
+  }
+
   bool forward = speed >= 0.0f;
   if (DIR_INVERTED) {
     forward = !forward;
   }
-
-  digitalWrite(DIR_PIN, forward ? HIGH : LOW);
-  analogWrite(PWM_PIN, pwm);
+  motor.run(forward ? FORWARD : BACKWARD);
 }
 
 int speedToPwm(float speed) {
@@ -135,12 +138,4 @@ int speedToPwm(float speed) {
     pwm = PWM_MIN_EFFECTIVE;
   }
   return pwm;
-}
-
-void setDriverEnabled(bool enabled) {
-  if (ENABLE_PIN < 0) {
-    return;
-  }
-  bool level = ENABLE_ACTIVE_HIGH ? enabled : !enabled;
-  digitalWrite(ENABLE_PIN, level ? HIGH : LOW);
 }

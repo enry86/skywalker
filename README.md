@@ -108,10 +108,11 @@ python -m skywalker --serial-port COM5 --baud-rate 115200 --sidereal-speed 1.234
 
 ### Arduino sketch included
 
-- A ready-to-adapt sketch is included at `skywalker_ra_controller.ino`.
+- A ready-to-adapt sketch is included at `arduino/skywalker_ra_controller.ino`.
+- The sketch now targets **Adafruit Motor Shield v1** via `AFMotor.h`.
+- Install the Adafruit Motor Shield library so Arduino IDE can resolve `#include <AFMotor.h>`.
 - It implements `SET`, `STOP`, `PING`, `STATUS`, plus watchdog stop.
-- Default output model is signed speed to `DIR` + `PWM` for an H-bridge/motor shield.
-- Update pin constants (`DIR_PIN`, `PWM_PIN`, `ENABLE_PIN`) and scaling (`SPEED_TO_PWM`) for your hardware.
+- Update `MOTOR_CHANNEL` (M1..M4), `DIR_INVERTED`, and `SPEED_TO_PWM` for your hardware.
 - Start with low values for `sidereal_speed`, `kp`, and `max_correction` while tuning.
 
 ### Isolated motor step test (no camera)
