@@ -1,6 +1,6 @@
 # SkyWalker
 
-SkyWalker is a small **autoguide prototype** for telescope setups: it captures video from a guide camera, detects a bright star (blob detection with a contour fallback), lets you **lock** a reference position with the mouse, and shows **pixel error** between the locked point and the tracked star. It uses **OpenCV** and is meant for experimentation until hardware drivers and guiding software are fully wired up.
+SkyWalker is a small **autoguide prototype** for telescope setups: it captures video from a guide camera, finds candidate stars (blob detection with a contour fallback), lets you **lock** on a star with the mouse, then follows that star in a small tracking window with a sub-pixel centroid and shows the **pixel error** from the lock position. It uses **OpenCV** and is meant for experimentation until hardware drivers and guiding software are fully wired up.
 
 Phase 2 adds RA motor driving over USB serial: Python computes a bounded speed command from star drift and streams setpoints to an Arduino controller.
 
@@ -36,7 +36,7 @@ skywalker
 
 | Action | Effect |
 |--------|--------|
-| **Left-click** | Lock guide position (green cross) on a star |
+| **Left-click** | Lock on the star nearest the click (green cross = its measured centroid; orange box = tracking window) |
 | **r** | Clear the lock |
 | **q** | Quit |
 
@@ -53,13 +53,24 @@ Global options (defaults match `GuideConfig` in `src/skywalker/config.py`):
 
 | Option | Default | Description |
 |--------|---------|-------------|
-| `-c N`, `--camera N` | `1` | OpenCV camera index |
-| `--use-directshow` / `--no-use-directshow` | `True` | On Windows, prefer DirectShow (`CAP_DSHOW`; often needed for USB cameras) |
+| `-c N`, `--camera N` | `0` | OpenCV camera index |
+| `--use-directshow` / `--no-use-directshow` | `True` | On Windows, prefer DirectShow (`CAP_DSHOW`; often needed for USB cameras). Linux always tries V4L2 first |
 | `--no-directshow` | — | Short alias for `--no-use-directshow` |
 | `--frame-width PX` | `640` | Requested frame width |
 | `--frame-height PX` | `480` | Requested frame height |
-| `--exposure VAL` | `-8.0` | `CAP_PROP_EXPOSURE` (device-dependent) |
-| `--gain VAL` | `100.0` | `CAP_PROP_GAIN` (device-dependent) |
+| `--exposure VAL` | unset | Manual exposure; switches auto-exposure off. Units are backend-specific (see below) |
+| `--gain VAL` | unset | `CAP_PROP_GAIN` (device-dependent) |
+| `--fps FPS` | unset | Requested frame rate; lower rates allow longer exposures |
+
+Unset camera options leave the driver's current setting alone. The values actually in effect are printed at startup.
+
+**Exposure units:** V4L2 (Linux) uses driver units, often 100 µs steps; DirectShow (Windows) uses log2 seconds (e.g. `-5` = 1/32 s).
+On Linux you can inspect and set controls directly, which also works when OpenCV cannot map a control:
+
+```bash
+v4l2-ctl -d /dev/video0 --list-ctrls
+v4l2-ctl -d /dev/video0 -c <control>=<value>
+```
 
 ### Star detection (blob filter)
 
@@ -70,13 +81,22 @@ Global options (defaults match `GuideConfig` in `src/skywalker/config.py`):
 | `--min-circularity 0-1` | `0.6` | Minimum circularity |
 | `--min-convexity 0-1` | `0.8` | Minimum convexity |
 | `--min-inertia 0-1` | `0.5` | Minimum inertia ratio |
-| `--clahe` / `--no-clahe` | `True` | Apply CLAHE to the grayscale image before detection |
+| `--clahe` / `--no-clahe` | `True` | Apply CLAHE before candidate detection (not used for centroiding) |
+
+### Star tracking
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `--track-half-size PX` | `15` | Half-width of the window that follows the locked star; nothing outside it is considered |
+| `--snap-radius PX` | `25.0` | A click locks on the nearest detected star within this distance |
+
+Inside the window the star position is a background-subtracted, intensity-weighted centroid of the connected region around the brightest pixel. Single-pixel spikes (hot pixels, noise) are rejected.
 
 ### RA motor control (phase 2)
 
 | Option | Default | Description |
 |--------|---------|-------------|
-| `--serial-port PORT` | `""` | Arduino serial port (for example `COM5`) |
+| `--serial-port PORT` | `""` | Arduino serial port (for example `/dev/ttyACM0` or `COM5`) |
 | `--baud-rate N` | `115200` | Serial speed |
 | `--serial-dry-run` / `--no-serial-dry-run` | `False` | Simulate serial link without hardware |
 | `--sidereal-speed VAL` | `0.0` | Base open-loop RA speed setpoint |
@@ -84,16 +104,19 @@ Global options (defaults match `GuideConfig` in `src/skywalker/config.py`):
 | `--deadband-px PX` | `0.8` | Ignore tiny X drift |
 | `--max-correction VAL` | `0.5` | Clamp on correction term magnitude |
 | `--command-hz HZ` | `8.0` | Command emission cadence |
-| `--min-command-delta VAL` | `0.002` | Send only if setpoint changed enough |
-| `--lock-loss-timeout SEC` | `1.0` | Force stop when lock/star is stale |
+| `--min-command-delta VAL` | `0.002` | Send early only if setpoint changed enough |
+| `--keepalive SEC` | `2.0` | Resend the setpoint at least this often (keeps the firmware watchdog fed) |
+| `--lock-loss-timeout SEC` | `1.0` | Time without the star before the status becomes `STAR_LOST` |
+
+Without a lock, or while the star is lost, the motor keeps running at `--sidereal-speed`: stopping RA would carry the star out of the guide field within seconds. The motor is stopped only when the program exits (and by the firmware watchdog if the PC stops sending).
 
 Omitted flags keep the defaults above. You can combine flags, for example:
 
 ```bash
-python -m skywalker -c 0 --exposure -10 --gain 80 --frame-width 800 --frame-height 600
+python -m skywalker -c 0 --fps 5 --exposure 300 --gain 80
 python -m skywalker --list-cameras
 python -m skywalker --serial-dry-run --sidereal-speed 1.234 --kp 0.015
-python -m skywalker --serial-port COM5 --baud-rate 115200 --sidereal-speed 1.234
+python -m skywalker --serial-port /dev/ttyACM0 --baud-rate 115200 --sidereal-speed 1.234
 ```
 
 ## Arduino serial protocol (phase 2 contract)
@@ -105,10 +128,12 @@ python -m skywalker --serial-port COM5 --baud-rate 115200 --sidereal-speed 1.234
   - Parse `SET` and apply speed,
   - Optionally reply `ACK <speed>\n` for diagnostics,
   - Stop (or fall back to a safe speed) if no command is received before watchdog timeout.
+- The host waits for `READY\n` after opening the port (opening it resets most boards), prints any
+  non-`ACK` line it receives (e.g. `WATCHDOG STOP`), and resends `SET` at least every `--keepalive` seconds.
 
 ### Arduino sketch included
 
-- A ready-to-adapt sketch is included at `arduino/skywalker_ra_controller.ino`.
+- A ready-to-adapt sketch is included at `skywalker_ra_controller/skywalker_ra_controller.ino`.
 - The sketch now targets **Adafruit Motor Shield v1** via `AFMotor.h`.
 - Install the Adafruit Motor Shield library so Arduino IDE can resolve `#include <AFMotor.h>`.
 - It implements `SET`, `STOP`, `PING`, `STATUS`, plus watchdog stop.

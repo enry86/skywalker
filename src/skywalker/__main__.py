@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import argparse
 import sys
-from dataclasses import replace
+from dataclasses import fields, replace
 
 
 def _build_parser(default) -> argparse.ArgumentParser:
@@ -55,7 +55,7 @@ def _build_parser(default) -> argparse.ArgumentParser:
         default=None,
         dest="exposure_value",
         metavar="VAL",
-        help=f"CAP_PROP_EXPOSURE (default: {d.exposure_value})",
+        help="Manual exposure, backend units (default: leave driver setting; see README)",
     )
     p.add_argument(
         "--gain",
@@ -63,7 +63,15 @@ def _build_parser(default) -> argparse.ArgumentParser:
         default=None,
         dest="gain_value",
         metavar="VAL",
-        help=f"CAP_PROP_GAIN (default: {d.gain_value})",
+        help="Gain, backend units (default: leave driver setting)",
+    )
+    p.add_argument(
+        "--fps",
+        type=float,
+        default=None,
+        dest="fps",
+        metavar="FPS",
+        help="Requested frame rate; low rates allow longer exposures (default: driver)",
     )
     p.add_argument(
         "--min-area",
@@ -113,12 +121,28 @@ def _build_parser(default) -> argparse.ArgumentParser:
         help=f"Use CLAHE before detection (default: {d.use_clahe})",
     )
     p.add_argument(
+        "--track-half-size",
+        type=int,
+        default=None,
+        dest="track_half_size",
+        metavar="PX",
+        help=f"Half-width of the star-tracking window (default: {d.track_half_size})",
+    )
+    p.add_argument(
+        "--snap-radius",
+        type=float,
+        default=None,
+        dest="snap_radius_px",
+        metavar="PX",
+        help=f"Max distance from click to the star it locks on (default: {d.snap_radius_px})",
+    )
+    p.add_argument(
         "--serial-port",
         type=str,
         default=None,
         dest="serial_port",
         metavar="PORT",
-        help="Arduino serial port (for example COM5).",
+        help="Arduino serial port (for example /dev/ttyACM0 or COM5).",
     )
     p.add_argument(
         "--baud-rate",
@@ -184,12 +208,20 @@ def _build_parser(default) -> argparse.ArgumentParser:
         help=f"Minimum setpoint change before sending (default: {d.min_command_delta})",
     )
     p.add_argument(
+        "--keepalive",
+        type=float,
+        default=None,
+        dest="keepalive_s",
+        metavar="SEC",
+        help=f"Resend the setpoint at least this often (default: {d.keepalive_s})",
+    )
+    p.add_argument(
         "--lock-loss-timeout",
         type=float,
         default=None,
         dest="lock_loss_timeout_s",
         metavar="SEC",
-        help=f"Time without valid lock before forcing stop (default: {d.lock_loss_timeout_s})",
+        help=f"Time without the star before reporting STAR_LOST (default: {d.lock_loss_timeout_s})",
     )
     p.add_argument(
         "--list-cameras",
@@ -200,53 +232,14 @@ def _build_parser(default) -> argparse.ArgumentParser:
 
 
 def _config_from_args(args: argparse.Namespace, base):
+    # Every option's dest matches a GuideConfig field; unset options are None.
     kw: dict = {}
-    if args.cam_index is not None:
-        kw["cam_index"] = args.cam_index
+    for f in fields(base):
+        value = getattr(args, f.name, None)
+        if value is not None:
+            kw[f.name] = value
     if args.no_directshow:
         kw["use_directshow"] = False
-    elif args.use_directshow is not None:
-        kw["use_directshow"] = args.use_directshow
-    if args.frame_width is not None:
-        kw["frame_width"] = args.frame_width
-    if args.frame_height is not None:
-        kw["frame_height"] = args.frame_height
-    if args.exposure_value is not None:
-        kw["exposure_value"] = args.exposure_value
-    if args.gain_value is not None:
-        kw["gain_value"] = args.gain_value
-    if args.min_area is not None:
-        kw["min_area"] = args.min_area
-    if args.max_area is not None:
-        kw["max_area"] = args.max_area
-    if args.min_circularity is not None:
-        kw["min_circularity"] = args.min_circularity
-    if args.min_convexity is not None:
-        kw["min_convexity"] = args.min_convexity
-    if args.min_inertia is not None:
-        kw["min_inertia"] = args.min_inertia
-    if args.use_clahe is not None:
-        kw["use_clahe"] = args.use_clahe
-    if args.serial_port is not None:
-        kw["serial_port"] = args.serial_port
-    if args.baud_rate is not None:
-        kw["baud_rate"] = args.baud_rate
-    if args.serial_dry_run is not None:
-        kw["serial_dry_run"] = args.serial_dry_run
-    if args.sidereal_speed is not None:
-        kw["sidereal_speed"] = args.sidereal_speed
-    if args.kp is not None:
-        kw["kp"] = args.kp
-    if args.deadband_px is not None:
-        kw["deadband_px"] = args.deadband_px
-    if args.max_correction is not None:
-        kw["max_correction"] = args.max_correction
-    if args.command_hz is not None:
-        kw["command_hz"] = args.command_hz
-    if args.min_command_delta is not None:
-        kw["min_command_delta"] = args.min_command_delta
-    if args.lock_loss_timeout_s is not None:
-        kw["lock_loss_timeout_s"] = args.lock_loss_timeout_s
     return replace(base, **kw) if kw else base
 
 

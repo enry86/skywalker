@@ -28,6 +28,7 @@ class RAControllerConfig:
     min_command_delta: float
     lock_loss_timeout_s: float
     alpha: float = 0.2
+    keepalive_s: float = 2.0
 
 
 class RAController:
@@ -65,10 +66,13 @@ class RAController:
             command = self._cfg.sidereal_speed + self._last_correction
             self._last_status = "GUIDING"
         else:
-            stale = (sample.timestamp_s - self._last_valid_sample_ts) > self._cfg.lock_loss_timeout_s
+            # Without a valid measurement keep tracking at the base rate: stopping RA would
+            # carry the star out of the guide field within seconds and spoil the exposure.
+            since_valid_s = sample.timestamp_s - self._last_valid_sample_ts
+            stale = since_valid_s > self._cfg.lock_loss_timeout_s
             self._filtered_error_x = 0.0
             self._last_correction = 0.0
-            command = self._cfg.sidereal_speed if not stale else 0.0
+            command = self._cfg.sidereal_speed
             if not sample.locked:
                 self._last_status = "WAIT_LOCK"
             elif not sample.star_found and stale:
@@ -79,8 +83,13 @@ class RAController:
         self._last_command = command
         return command
 
-    def should_emit(self, candidate: float, last_sent: float | None) -> bool:
+    def should_emit(
+        self, candidate: float, last_sent: float | None, since_last_send_s: float = 0.0
+    ) -> bool:
+        """Send on meaningful change, and periodically so the firmware watchdog stays fed."""
         if last_sent is None:
+            return True
+        if since_last_send_s >= self._cfg.keepalive_s:
             return True
         return abs(candidate - last_sent) >= self._cfg.min_command_delta
 

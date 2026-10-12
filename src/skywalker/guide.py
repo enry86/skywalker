@@ -5,10 +5,18 @@ from __future__ import annotations
 import time
 
 import cv2
+import numpy as np
 
-from skywalker.cameras import open_capture
+from skywalker.cameras import apply_capture_settings, open_capture
 from skywalker.config import GuideConfig
 from skywalker.control import GuidingSample, RAController, RAControllerConfig
+from skywalker.detection import (
+    centroid_in_window,
+    create_blob_detector,
+    enhance_for_detection,
+    find_candidate_stars,
+    nearest_star,
+)
 from skywalker.serial_link import SerialConfig, SerialSetpointLink
 
 WINDOW_NAME = "Guide Camera - Star Tracker"
@@ -21,6 +29,8 @@ class GuideApp:
         self.config = config or GuideConfig()
         self.reference_pos: tuple[float, float] | None = None
         self.guide_star_pos: tuple[float, float] | None = None
+        # Last measured position of the locked star; the tracking window is centred here.
+        self.track_pos: tuple[float, float] | None = None
         self.error_x: float = 0.0
         self.error_y: float = 0.0
         self.last_sample: GuidingSample | None = None
@@ -33,22 +43,17 @@ class GuideApp:
             self.config.cam_index,
             use_directshow=self.config.use_directshow,
         )
-        self._cap.set(cv2.CAP_PROP_FRAME_WIDTH, self.config.frame_width)
-        self._cap.set(cv2.CAP_PROP_FRAME_HEIGHT, self.config.frame_height)
-        self._cap.set(cv2.CAP_PROP_EXPOSURE, self.config.exposure_value)
-        self._cap.set(cv2.CAP_PROP_GAIN, self.config.gain_value)
-
-        params = cv2.SimpleBlobDetector_Params()
-        params.filterByArea = True
-        params.minArea = self.config.min_area
-        params.maxArea = self.config.max_area
-        params.filterByCircularity = True
-        params.minCircularity = self.config.min_circularity
-        params.filterByConvexity = True
-        params.minConvexity = self.config.min_convexity
-        params.filterByInertia = True
-        params.minInertiaRatio = self.config.min_inertia
-        self._detector = cv2.SimpleBlobDetector_create(params)
+        apply_capture_settings(
+            self._cap,
+            frame_width=self.config.frame_width,
+            frame_height=self.config.frame_height,
+            exposure=self.config.exposure_value,
+            gain=self.config.gain_value,
+            fps=self.config.fps,
+        )
+        self._detector = create_blob_detector(self.config)
+        self._last_gray: np.ndarray | None = None
+        self._last_candidates: list[tuple[float, float]] = []
 
         cv2.namedWindow(WINDOW_NAME)
         cv2.setMouseCallback(WINDOW_NAME, self._on_mouse)
@@ -72,8 +77,27 @@ class GuideApp:
 
     def _on_mouse(self, event: int, x: int, y: int, _flags: int, _param: object) -> None:
         if event == cv2.EVENT_LBUTTONDOWN:
-            self.reference_pos = (float(x), float(y))
-            print(f"Guide star locked at: {self.reference_pos}")
+            self._lock_near((float(x), float(y)))
+
+    def _lock_near(self, click: tuple[float, float]) -> None:
+        """Lock on the star nearest the click, using its measured centroid as the reference."""
+        if self._last_gray is None:
+            return
+        cfg = self.config
+        seed = nearest_star(self._last_candidates, click, cfg.snap_radius_px) or click
+        star = centroid_in_window(self._last_gray, seed, cfg.track_half_size)
+        if star is None:
+            print(f"No star found near {click}; lock not changed.")
+            return
+        self.reference_pos = star
+        self.track_pos = star
+        print(f"Guide star locked at: ({star[0]:.2f}, {star[1]:.2f})")
+
+    def _reset_lock(self) -> None:
+        self.reference_pos = None
+        self.track_pos = None
+        self.error_x = 0.0
+        self.error_y = 0.0
 
     def run(self) -> None:
         cfg = self.config
@@ -91,6 +115,7 @@ class GuideApp:
                 max_correction=cfg.max_correction,
                 min_command_delta=cfg.min_command_delta,
                 lock_loss_timeout_s=cfg.lock_loss_timeout_s,
+                keepalive_s=cfg.keepalive_s,
             )
         )
         serial_link = SerialSetpointLink(
@@ -98,6 +123,7 @@ class GuideApp:
                 port=cfg.serial_port,
                 baud_rate=cfg.baud_rate,
                 dry_run=cfg.serial_dry_run,
+                ready_timeout_s=cfg.serial_ready_timeout_s,
             )
         )
         command_period_s = 1.0 / max(cfg.command_hz, 0.1)
@@ -115,45 +141,31 @@ class GuideApp:
                     break
 
                 gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-
-                if cfg.use_clahe:
-                    clahe = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(8, 8))
-                    gray = clahe.apply(gray)
-                else:
-                    gray = cv2.equalizeHist(gray)
-
-                gray = cv2.GaussianBlur(gray, (3, 3), 0)
-
-                keypoints = list(self._detector.detect(gray))
-
-                if len(keypoints) == 0:
-                    _, thresh = cv2.threshold(gray, 200, 255, cv2.THRESH_BINARY)
-                    contours, _ = cv2.findContours(
-                        thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE
-                    )
-                    for cnt in contours:
-                        area = cv2.contourArea(cnt)
-                        if cfg.min_area < area < cfg.max_area:
-                            m = cv2.moments(cnt)
-                            if m["m00"] != 0:
-                                cx = m["m10"] / m["m00"]
-                                cy = m["m01"] / m["m00"]
-                                size = float(area**0.5)
-                                keypoints.append(cv2.KeyPoint(float(cx), float(cy), size))
+                enhanced = enhance_for_detection(gray, cfg.use_clahe)
+                self._last_gray = gray
+                self._last_candidates = find_candidate_stars(
+                    enhanced, self._detector, cfg.min_area, cfg.max_area
+                )
 
                 current_pos: tuple[float, float] | None = None
-                if keypoints:
-                    keypoints.sort(key=lambda kp: kp.size, reverse=True)
-                    current_pos = (keypoints[0].pt[0], keypoints[0].pt[1])
-
-                if self.reference_pos is not None and current_pos is not None:
-                    self.error_x = current_pos[0] - self.reference_pos[0]
-                    self.error_y = current_pos[1] - self.reference_pos[1]
+                if self.reference_pos is not None and self.track_pos is not None:
+                    # Follow the locked star only: other stars or hot pixels elsewhere in the
+                    # frame must never be mistaken for it.
+                    current_pos = centroid_in_window(gray, self.track_pos, cfg.track_half_size)
+                    if current_pos is not None:
+                        self.track_pos = current_pos
+                        self.error_x = current_pos[0] - self.reference_pos[0]
+                        self.error_y = current_pos[1] - self.reference_pos[1]
+                    else:
+                        self.error_x = 0.0
+                        self.error_y = 0.0
                     self.guide_star_pos = current_pos
                 else:
                     self.error_x = 0.0
                     self.error_y = 0.0
-                    self.guide_star_pos = current_pos
+                    self.guide_star_pos = (
+                        self._last_candidates[0] if self._last_candidates else None
+                    )
 
                 sample = self._build_guiding_sample(current_pos=current_pos, now=now, dt_s=dt_s)
                 self.last_sample = sample
@@ -161,18 +173,28 @@ class GuideApp:
                 if now >= next_command_ts:
                     next_command_ts = now + command_period_s
                     candidate = controller.compute(sample)
-                    if controller.should_emit(candidate, serial_link.last_sent):
+                    if controller.should_emit(
+                        candidate, serial_link.last_sent, serial_link.seconds_since_send()
+                    ):
                         serial_link.send_setpoint(candidate)
                     self.current_speed_cmd = candidate
                     self.current_correction = controller.last_correction
                     self.filtered_error_x = controller.filtered_error_x
                     self.tracking_status = controller.last_status
 
+                for line in serial_link.poll_lines():
+                    if not line.startswith("ACK"):
+                        print(f"[arduino] {line}")
+
                 display = frame.copy()
 
                 if self.reference_pos:
                     rx, ry = int(self.reference_pos[0]), int(self.reference_pos[1])
                     cv2.drawMarker(display, (rx, ry), (0, 255, 0), cv2.MARKER_CROSS, 20, 2)
+                if self.track_pos:
+                    tx, ty = int(self.track_pos[0]), int(self.track_pos[1])
+                    hs = cfg.track_half_size
+                    cv2.rectangle(display, (tx - hs, ty - hs), (tx + hs, ty + hs), (0, 200, 255), 1)
 
                 if self.guide_star_pos:
                     sx, sy = int(self.guide_star_pos[0]), int(self.guide_star_pos[1])
@@ -189,7 +211,17 @@ class GuideApp:
                     2,
                 )
 
-                if self.reference_pos:
+                if self.reference_pos and self.guide_star_pos is None:
+                    cv2.putText(
+                        display,
+                        "STAR LOST - holding base speed",
+                        (10, 60),
+                        cv2.FONT_HERSHEY_SIMPLEX,
+                        0.6,
+                        (0, 0, 255),
+                        2,
+                    )
+                elif self.reference_pos:
                     cv2.putText(
                         display,
                         "LOCKED - Click again or 'r' to reset",
@@ -258,9 +290,7 @@ class GuideApp:
                 if key == ord("q"):
                     break
                 if key == ord("r"):
-                    self.reference_pos = None
-                    self.error_x = 0.0
-                    self.error_y = 0.0
+                    self._reset_lock()
                     print("Lock reset")
         finally:
             try:
